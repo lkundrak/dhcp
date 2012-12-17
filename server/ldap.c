@@ -151,7 +151,7 @@ ldap_parse_subclass (struct ldap_config_stack *item, struct parse *cfile)
 static void
 ldap_parse_host (struct ldap_config_stack *item, struct parse *cfile)
 {
-  struct berval **tempbv, **hwaddr;
+  struct berval **tempbv, **hwaddr, **agent_circuitid;
 
   if ((tempbv = ldap_get_values_len (ld, item->ldent, "cn")) == NULL ||
       tempbv[0] == NULL)
@@ -162,17 +162,26 @@ ldap_parse_host (struct ldap_config_stack *item, struct parse *cfile)
       return;
     }
 
-  hwaddr = ldap_get_values_len (ld, item->ldent, "dhcpHWAddress");
-
   x_strncat (cfile->inbuf, "host ", LDAP_BUFFER_SIZE);
   x_strncat (cfile->inbuf, tempbv[0]->bv_val, LDAP_BUFFER_SIZE);
+  x_strncat (cfile->inbuf, " {\n", LDAP_BUFFER_SIZE);
 
+  hwaddr = ldap_get_values_len (ld, item->ldent, "dhcpHWAddress");
   if (hwaddr != NULL && hwaddr[0] != NULL)
     {
-      x_strncat (cfile->inbuf, " {\nhardware ", LDAP_BUFFER_SIZE);
+      x_strncat (cfile->inbuf, "hardware ", LDAP_BUFFER_SIZE);
       x_strncat (cfile->inbuf, hwaddr[0]->bv_val, LDAP_BUFFER_SIZE);
       x_strncat (cfile->inbuf, ";\n", LDAP_BUFFER_SIZE);
       ldap_value_free_len (hwaddr);
+    }
+
+  agent_circuitid = ldap_get_values_len (ld, item->ldent, "dhcpAgentCircuitID");
+  if (agent_circuitid != NULL && agent_circuitid[0] != NULL)
+    {
+      x_strncat (cfile->inbuf, "host-identifier option agent.circuit-id \"", LDAP_BUFFER_SIZE);
+      x_strncat (cfile->inbuf, agent_circuitid[0]->bv_val, LDAP_BUFFER_SIZE);
+      x_strncat (cfile->inbuf, "\";\n", LDAP_BUFFER_SIZE);
+      ldap_value_free_len (agent_circuitid);
     }
 
   item->close_brace = 1;
