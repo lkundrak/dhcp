@@ -628,7 +628,14 @@ find_hosts_by_option(struct host_decl **hp,
 	struct option_cache *oc;
 	struct data_string data;
 	int found;
-	
+#if defined(LDAP_CONFIGURATION)
+	int ret;
+
+	if ((ret = find_agent_circuitid_in_ldap (hp, packet, file, line))) {
+		return ret;
+	}
+#endif
+
 	for (p = host_id_info; p != NULL; p = p->next) {
 		oc = lookup_option(p->option->universe, 
 				   opt_state, p->option->code);

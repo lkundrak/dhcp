@@ -1701,7 +1701,159 @@ ldap_parse_options (LDAPMessage * ent, struct group *group,
   return (lease_limit);
 }
 
+int
+find_agent_circuitid_in_ldap (struct host_decl **hp, struct packet *packet,
+                          const char *file, int line)
+{
+  char buf[256];
+  LDAPMessage * res, *ent;
+  struct host_decl * host;
+  isc_result_t status;
+  ldap_dn_node *curr;
+  int ret;
+  struct option_cache *oc;
 
+  if (ldap_method == LDAP_METHOD_STATIC)
+    return (0);
+
+  if (ld == NULL)
+    ldap_start ();
+  if (ld == NULL)
+    return (0);
+
+  oc = lookup_option(&agent_universe, packet->options, RAI_CIRCUIT_ID);
+  if (oc == NULL)
+    return (0);
+  if (strchr ((const char *)oc->data.data, ')') ||
+      strchr ((const char *)oc->data.data, '('))
+    {
+      log_info ("Inivalid characters in agent circuit id");
+      return (0);
+    }
+
+  if (sizeof(buf) <= snprintf (buf, sizeof(buf),
+                               "(&(objectClass=dhcpHost)(dhcpAgentCircuitID=%s))",
+                               oc->data.data))
+    {
+      log_info ("Option too big; ignored");
+      return (0);
+    }
+
+  res = ent = NULL;
+  for (curr = ldap_service_dn_head;
+       curr != NULL && *curr->dn != '\0';
+       curr = curr->next)
+    {
+#if defined (DEBUG_LDAP)
+      log_info ("Searching for %s in LDAP tree %s", buf, curr->dn);
+#endif
+      ret = ldap_search_ext_s (ld, curr->dn, LDAP_SCOPE_SUBTREE, buf, NULL, 0,
+                               NULL, NULL, NULL, 0, &res);
+
+      if(ret == LDAP_SERVER_DOWN)
+        {
+          log_info ("LDAP server was down, trying to reconnect...");
+
+          ldap_stop();
+          ldap_start();
+          if(ld == NULL)
+            {
+              log_info ("LDAP reconnect failed - try again later...");
+              return (0);
+            }
+
+          ret = ldap_search_ext_s (ld, curr->dn, LDAP_SCOPE_SUBTREE, buf, NULL,
+                                   0, NULL, NULL, NULL, 0, &res);
+        }
+
+      if (ret == LDAP_SUCCESS)
+        {
+          if( (ent = ldap_first_entry (ld, res)) != NULL)
+            break; /* search OK and have entry */
+
+#if defined (DEBUG_LDAP)
+          log_info ("No host entry for %s in LDAP tree %s",
+                    buf, curr->dn);
+#endif
+          if(res)
+            {
+              ldap_msgfree (res);
+              res = NULL;
+            }
+        }
+      else
+        {
+          if(res)
+            {
+              ldap_msgfree (res);
+              res = NULL;
+            }
+
+          if (ret != LDAP_NO_SUCH_OBJECT && ret != LDAP_SUCCESS)
+            {
+              log_error ("Cannot search for %s in LDAP tree %s: %s", buf,
+                         curr->dn, ldap_err2string (ret));
+              ldap_stop();
+              return (0);
+            }
+#if defined (DEBUG_LDAP)
+          else
+            {
+              log_info ("ldap_search_ext_s returned %s when searching for %s in %s",
+                        ldap_err2string (ret), buf, curr->dn);
+            }
+#endif
+        }
+    }
+
+  if (res && ent)
+    {
+#if defined (DEBUG_LDAP)
+      char *dn = ldap_get_dn (ld, ent);
+      if (dn != NULL)
+        {
+          log_info ("Found dhcpAgentCircuitID LDAP entry %s", dn);
+          ldap_memfree(dn);
+        }
+#endif
+
+      host = (struct host_decl *)0;
+      status = host_allocate (&host, MDL);
+      if (status != ISC_R_SUCCESS)
+        {
+          log_fatal ("can't allocate host decl struct: %s",
+                     isc_result_totext (status));
+          ldap_msgfree (res);
+          return (0);
+        }
+
+      host->name = ldap_get_host_name (ent);
+      if (host->name == NULL)
+        {
+          host_dereference (&host, MDL);
+          ldap_msgfree (res);
+          return (0);
+        }
+
+      if (!clone_group (&host->group, root_group, MDL))
+        {
+          log_fatal ("can't clone group for host %s", host->name);
+          host_dereference (&host, MDL);
+          ldap_msgfree (res);
+          return (0);
+        }
+
+      ldap_parse_options (ent, host->group, HOST_DECL, host, NULL);
+
+      *hp = host;
+      ldap_msgfree (res);
+      return (1);
+    }
+
+
+  if(res) ldap_msgfree (res);
+  return (0);
+}
 
 int
 find_haddr_in_ldap (struct host_decl **hp, int htype, unsigned hlen,

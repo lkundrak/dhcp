@@ -3470,6 +3470,8 @@ extern struct enumeration ldap_tls_crlcheck_enum;
 isc_result_t ldap_read_config (void);
 int find_haddr_in_ldap (struct host_decl **, int, unsigned,
 			const unsigned char *, const char *, int);
+int find_agent_circuitid_in_ldap (struct host_decl **, struct packet *,
+                              const char *, int);
 int find_subclass_in_ldap (struct class *, struct class **,
 			   struct data_string *);
 #endif
