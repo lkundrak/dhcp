@@ -251,6 +251,11 @@ print_entry
           $curentry{'hwaddress'} =~ y/[A-Z]/[a-z]/;
           print "dhcpHWAddress: " . $curentry{'hwaddress'} . "\n";
         }
+
+      if (defined ($curentry{'agent_circuit_id'}))
+        {
+          print "dhcpAgentCircuitID: " . $curentry{'agent_circuit_id'} . "\n";
+        }
     }
   elsif ($curentry{'type'} eq 'pool')
     {
@@ -512,6 +517,30 @@ sub parse_hwaddress
 }
 
     
+sub parse_host_identifier
+{
+  local ($class, $option, $value, $tmp);
+
+  $class = next_token (1);
+  parse_error () if !defined ($class);
+
+  return parse_statement ("host-identifier $class")
+    unless $class eq 'option';
+
+  $option = next_token (1);
+  parse_error () if !defined ($option);
+
+  return parse_statement ("host-identifier $class $option")
+    unless $option eq 'agent.circuit-id';
+
+  $value = next_token (1);
+  parse_error () if !defined ($value);
+  $value =~ s/^"(.*)";$/$1/;
+
+  $curentry{'agent_circuit_id'} = $value;
+}
+
+
 sub parse_range
 {
   local ($tmp, $str);
@@ -739,6 +768,11 @@ while (($token = next_token (1)))
     elsif ($token eq 'hardware')
       {
         parse_hwaddress ();
+        next;
+      }
+    elsif ($token eq 'host-identifier')
+      {
+        parse_host_identifier ();
         next;
       }
     elsif ($token eq 'range')
